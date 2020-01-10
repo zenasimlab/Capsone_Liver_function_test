@@ -1,0 +1,776 @@
+---
+title: "Role of Liver Function Test in Diagnosis of Liver Diseases"
+author: "Zenasimlab"
+date: "1/8/2020"
+output: html_document
+---
+
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(caret)
+```
+
+## Introduction
+
+Chronic liver disease(cirrhosis) is responsible for more than 1 million deaths annually and the majority of these deaths are preventable. They usually present with non-specific symptoms such as weakness, fatigue, intermittent nausea and abdominal discomfort. Moreover it can be further complicated by the underlying chronic diseases hence increases the challenges of diagnosis clinically.
+
+No serologic test can diagnose cirrhosis accurately.(Reference 1) As I'm a practicing clinician in Malaysia, I'm interested to explore whether machine learning technique can be applied to the blood parameters dataset to identify the patients with liver diseases. Potentially the outcome of the project can complement the current practice of clinican to achieve more accurate diagnosis of liver diseases. 
+
+In this project,the dataset including blood results of liver function test in  patients receiving care from hepatologist and baseline results from a control group was used for the analysis. It is freely availble through UCI Machine Learning Repository.(Reference 2)
+
+
+## Data ingestion
+
+## Download and splitting the data
+First we import the dataset into a data frame and then define the column names. 
+
+```{r data_import}
+## Retrieve the dataset
+columnNames <- c('age', # Age of the patient 
+                'sex', # Sex of the patient 
+                'tb', # Total Bilirubin
+                'db', # Direct Bilirubin 
+                'alkphos', # Alkaline Phosphotase
+                'sgpt', # Alanine Aminotransferase
+                'sgot', # Aspartate Aminotransferase
+                'tp', # Total Protein
+                'alb', # Albumin
+                'ag', # Ratio	Albumin and Globulin Ratio 
+                'outcome') # Selector field used to split the data into two sets
+
+fullData <- read.table("https://archive.ics.uci.edu/ml/machine-learning-databases/00225/Indian%20Liver%20Patient%20Dataset%20(ILPD).csv",
+                sep=',',
+                header=FALSE,
+                col.names=columnNames)
+```
+
+
+```{r data_preprocessing}
+fullData <- subset(fullData, complete.cases(fullData))
+
+fullData <- fullData%>% 
+  mutate(outcome = as.character(outcome))%>% 
+  mutate(outcome = replace(outcome, outcome == '1', 'Care'))%>%
+  mutate(outcome = replace(outcome, outcome == '2', 'Control'))%>%
+  mutate(outcome = as.factor(outcome))
+
+rm(columnNames)
+head(fullData)
+```
+
+
+## Normal range of liver function test(Reference 2):
+Total bilirubin:2 to 21μmol/L
+Direct bilirubin:< 8μmol/L
+Alkaline Phosphatase: 41 to 133U/L
+Alanine Aminotransferase: 7–56 U/ L 
+Aspartate Aminotransferase: 0 to 35U/L
+Total Protein: 6 to 8 g/dl
+Albumin: 3.5 to 5.0 g/dl
+
+## Data exploration
+
+## Creating training and test sets 
+Next generate the training and test sets by splitting the data, preserving the 
+approximate proportions in the outcome column.
+
+```{r test-train}
+set.seed(1, sample.kind = "Rounding") 
+trainIndex <- createDataPartition(fullData$outcome, times=1, p=0.7, list=FALSE)
+train <- fullData[trainIndex,]
+test <- fullData[-trainIndex,]
+rm(trainIndex)
+```
+
+## Age
+
+```{r age_exploration}
+train%>% 
+  ggplot(aes(x = age)) + 
+    geom_histogram(binwidth = 20) + 
+    theme_minimal() +
+    facet_grid(~ outcome)
+```
+
+The age distribution in both care and control group appear to be in similar pattern, both peaks at around 30-50 years old. 
+
+## Sex
+
+```{r sex_exploration}
+train %>% 
+  ggplot(aes(x = sex)) + 
+    geom_bar() + 
+    theme_minimal() +
+    facet_grid(~ outcome)
+```
+
+This bar graph depicts the gender distribution in both care and control groups whereby there are predominantly male. 
+
+## Bilirubin
+
+Bilirubin is formed by the breakdown of red blood cells in the body.
+It can be divided into:
+a) Total bilirubin - encompass both conjugated and unconjugated bilirubin
+b) Direct bilirubin - this is also known as conjugated bilirubin. It is water-soluble bilirubin which travels from the liver into the small intestine. A very small amount passes into the kidneys and is excreted in urine.
+
+## Total bilirubin  
+
+```{r total_bilirubin_exploration}
+train %>% 
+  ggplot(aes(x = tb)) + 
+    geom_histogram(binwidth = 5) + 
+    theme_minimal() +
+    facet_grid(~ outcome)
+```
+
+Most values in histogram lie between "0-"5" column with the data in care group spread across more columns. 
+
+## Direct bilirubin
+
+```{r direct_bilirubin-exploration}
+train %>% 
+  ggplot(aes(x = db)) + 
+    geom_histogram(binwidth = 1) + 
+    theme_minimal() +
+    facet_grid(~ outcome)
+```
+
+Similar pattern was observed in the histograms for direct bilirubin. 
+
+## Enzymes
+
+There are 3 specific liver enzymes present in our blood sample, namely:
+
+a) Alkaline Phosphatase- mostly found in the liver, bones, kidneys, and digestive system
+b) Alanine Aminotransferase - primarily in the liver and kidney
+c) Aspartate Aminotransferase - found in the highest concentrations in liver, muscles, heart, kidney, brain and red blood cells
+
+## Alkaline Phosphatase
+
+```{r alkphos_exploration}
+train %>% 
+  ggplot(aes(x = alkphos)) + 
+    geom_histogram(binwidth = 200) + 
+    theme_minimal() +
+    facet_grid(~ outcome)
+```
+
+## Alanine Aminotransferase
+
+```{r sgpt_exploration}
+train %>% 
+  ggplot(aes(x = sgpt)) + 
+    geom_histogram(binwidth = 200) + 
+    theme_minimal() +
+    facet_grid(~ outcome)
+```
+
+## Aspartate Aminotransferase
+
+```{r sgot_exploration}
+train %>% 
+  ggplot(aes(x = sgpt)) + 
+    geom_histogram(binwidth = 200) + 
+    theme_minimal() +
+    facet_grid(~ outcome)
+```
+
+Similar patterns were observed in all 3 enzymes in both care and control group.In order to compare the outliers of one parameter to another, the total bilirubin level is plotted against one of the enzymes. 
+
+## Total bilirubin level Against Aspartate Aminotransferase 
+
+```{r sgot_vs_bilirubin_exploration}
+train %>% 
+  ggplot(aes(x = sgot, y = tb, shape = outcome, color = outcome)) + 
+    geom_point() +
+    scale_y_log10() + 
+    scale_x_log10() +
+    geom_vline(xintercept = 700) +
+    geom_hline(yintercept = 7.5) +
+    theme_minimal() 
+```
+
+Practically all healthy subjects in control group fall under the left lower quadrant(low total bilirubin and low aspartate aminotransferase).Most of the patients group receiving hepatologist care fall under left upper quadrant (high total bilirubin and low asparate aminotransferase) with the rest in right upper and lower quadrant.
+
+## Proteins
+
+Under protein category, it can be further divided into:
+a) Albumin - a group of water-soluble globular proteins
+b) Total protein
+
+## Albumin
+
+```{r alb-exploration}
+train %>% 
+  ggplot(aes(x = alb)) + 
+    geom_histogram(binwidth = 0.5) + 
+    theme_minimal() +
+    facet_grid(~ outcome)
+```
+
+## Total protein
+
+```{r tp-exploration}
+train %>% 
+  ggplot(aes(x = tp)) + 
+    geom_histogram(binwidth = 0.5) + 
+    theme_minimal() +
+    facet_grid(~ outcome)
+```
+
+The distribution of albumin and total protein is almost identical in both care and control groups. 
+
+## Ratio between albumin and globulin. 
+
+```{r ag-exploration}
+subset(train, !is.na(ag)) %>% 
+  ggplot(aes(x = ag)) + 
+    geom_histogram(binwidth = 0.1) + 
+    theme_minimal() +
+    facet_grid(~ outcome)
+```
+
+It is obvious that there are some outliers in the patients group who receive hepatologist care. 
+
+## Correlated Predictors
+
+From the previous graphs, we learnt that some of the dataset might be correlated with each other. It can be further confirmed by correlation function and graphical comparison of both parameters. For both predictors which are correlated, we can remove one of the categorical columns from the dataset. 
+
+```{r desc_cor}
+cor(subset(train, select = -c(sex, outcome)))
+```
+
+0.7 was used as a cutoff value to identify highly correlated predictors:
+
+a) Direct bilirubin (`db`) and total bilirubin (`tb`)
+b) Aspartate Aminotransferase (`sgot`) and Alamine Aminotransferase (`sgpt`)
+c) Albumin (`alb`) and Total protein (`tp`)
+
+## Bilirubin
+
+Graphing the distribution of the points in both groups will make it clear 
+whether the correlation affects both patient groups equally.
+
+```{r bilirubin_comparison}
+train %>% 
+  ggplot(aes(x = tb, y = db)) + 
+    geom_point() + 
+    theme_minimal() +
+    facet_grid(~ outcome)
+```
+
+Both groups have the same distribution of the points.
+
+Hence it is sensible to drop one of these from the list of predictors. 
+
+```{r drop_db}
+train <- train %>% subset(select = -c(db))
+test <- test %>% subset(select = -c(db))
+```
+
+## Aminotransferases
+
+The same approach can be used for the Aspartate aminotransferase and Alanine aminotransferase columns. 
+
+```{r enzymes_comparison}
+train %>% 
+  ggplot(aes(x = sgot, y = sgpt, color = outcome, shape = outcome)) + 
+    geom_point() + 
+    theme_minimal()
+```
+
+The distribution is fairly constant thus `sgpt` is removed from the list. `sgot` was kept as it displays more variance. 
+
+```{r drop_sgpt}
+train <- train %>% subset(select = -c(sgpt))
+test <- test %>% subset(select = -c(sgpt))
+```
+
+## Proteins
+
+The third pair of predictors to be investigated are total protein and albumin. 
+
+```{r protein_albumin}
+train %>% 
+  ggplot(aes(x = tp, y = alb, color = outcome, shape = outcome)) + 
+    geom_point() + 
+    theme_minimal()
+```
+
+As there are no significant outliers and both distribution are in similar pattern, we can eliminate albumin from the list of predictors. 
+
+```{r drop-alb}
+train <- train %>% subset(select = -c(alb))
+test <- test %>% subset(select = -c(alb))
+```
+
+Liver enzymes are important parameters in liver function test, although Aspartate aminotransferase and Alanine aminotransferase has correlation of more than 0.7, all enzymes parameters will be kept in the dataset. 
+
+
+# Machine Learning Methods
+
+Machine learning refers to a variety of techniques dealing with pattern recognition based on models for classification and the prediction of new data. As this dataset demonstrated some signs of correlation, machine learning is used to identify patients who may benefit from receiving hepatologist care. 
+
+A few metrics to explore in this project:
+a) Accuracy - the fraction of predictions our model got right
+b) Sensitivity -also called the true positive rate, measures the proportion of actual positives that are correctly identified as such 
+c) Specificity - also called true negative rate, relates to the classifier's ability to identify negative results
+
+The results can be saved after each model, to allow for easier comparison.
+
+```{r setup_storage}
+results <- data.frame(Model = character(), 
+                      Accuracy = double(), 
+                      Sensitivity = double(), 
+                      Specificity = double(), 
+                      stringsAsFactors = FALSE)
+```
+
+
+## Naive Bayes
+
+Naive Bayes is a simple, yet effective and commonly-used, machine learning classifier. This
+calculates a series of conditional probabilities, and the probabilities of
+each possible outcome.
+
+```{r nb_train4, info=FALSE, warning=FALSE}
+nb_model = train(outcome ~ ., data = train, method = "nb")
+predictions = predict(nb_model, newdata = test)
+confusionMatrix <- confusionMatrix(predictions, test$outcome)
+results[nrow(results) + 1, ] <- c(as.character('Naive Bayes (nb)'), 
+                                  confusionMatrix$overall['Accuracy'],  
+                                  confusionMatrix$byClass['Sensitivity'], 
+                                  confusionMatrix$byClass['Specificity'])
+rm(nb_model, predictions)
+confusionMatrix
+```
+
+The model provides the accuracy of 0.67 which is unsatisfactory. The sensitivity is of 0.62 is also quite low as compared to the specificity of 0.796. The main imitation of Naive Bayes is the assumption of independent predictors. However, it is almost impossible that we get a set of predictors which are completely independent in real life. 
+
+
+## Linear Classifier
+
+A linear classifier makes a classification decision based on the value of a linear combination of the characteristics.  In this case, the "Boosted Generalized Linear Model" is applied. 
+
+```{r linear_classifier_train, info=FALSE, warning=FALSE}
+lc_model = train(outcome ~ ., data = train, method = "glmboost")
+predictions = predict(lc_model, newdata = test)
+confusionMatrix <- confusionMatrix(predictions, test$outcome)
+results[nrow(results) + 1, ] <- c(as.character('Linear Classifier (glmboost)'), 
+                                  confusionMatrix$overall['Accuracy'],  
+                                  confusionMatrix$byClass['Sensitivity'], 
+                                  confusionMatrix$byClass['Specificity'])
+rm(lc_model, predictions)
+confusionMatrix
+```
+
+
+Although there is improvement of accuracy (0.72), the result of confusion matrix predicted that nearly every patient  needed liver care. The sensitivity of the number of patients identified correctly is 1 which indicates that all patients with liver disease receiving hepatic care have flagged liver function test. The specificity (true negative rate) is incredibly low (0.02). Besides, another shortcoming of this approach is that the significantly higher number in the group with liver disease as compared with control group which can contribute to the higher accuracy metric. 
+
+Global prevalence of chronic liver disease is around 6%.It is worthwhile to include prevalence into the prediction of accuracy and repeat 2 previous confusion matrices by using the estimation of 6%.
+
+
+```{r nb-train-prev, info=FALSE, warning=FALSE}
+nb_model = train(outcome ~ ., data = train, method = "nb")
+predictions = predict(nb_model, newdata = test)
+confusionMatrix <- confusionMatrix(predictions, test$outcome, prevalence = 0.06)
+rm(nb_model, predictions)
+confusionMatrix
+```
+
+```{r linc-train-prev, info=FALSE, warning=FALSE}
+lc_model = train(outcome ~ ., data = train, method = "glmboost")
+predictions = predict(lc_model, newdata = test)
+confusionMatrix <- confusionMatrix(predictions, test$outcome, prevalence = 0.06)
+rm(lc_model, predictions)
+confusionMatrix
+```
+
+Positive Predictive Value and Negative Predictive Value are 2 important indicators to be used for medical screening tool. 
+
+When Naive Bayes model is in place, 62% of patients at risk were successfully picked up with flagged test results, out of which 16% of them require further care, and 97% of them who are initially identified as not at risk were actually healthy. 
+
+Under linear classifier model, it is able to to detect almost all of the at-risk patients (99%), however only 6% of those with abnormal liver blood test results  are actually having liver disease. 97% of patients who have normal results are free from liver diseases. 
+
+## Logistic Regression
+
+Linear Regression is a machine learning algorithm targeting prediction value based on independent variables.The prediction is run by using the Bayesian Generalized Linear Model and actual prevalence in confusion matrix. 
+
+
+```{r lr-train, info=FALSE, warning=FALSE}
+lr_model = train(outcome ~ ., data = train, method = "bayesglm")
+predictions = predict(lr_model, newdata = test)
+confusionMatrix <- confusionMatrix(predictions, test$outcome, prevalence = 0.06)
+results[nrow(results) + 1, ] <- c(as.character('Logistic Regression (bayesglm)'),                                   confusionMatrix$overall['Accuracy'],  
+                                  confusionMatrix$byClass['Sensitivity'], 
+                                  confusionMatrix$byClass['Specificity'])
+rm(lr_model, predictions)
+confusionMatrix
+```
+
+Accurary remains the same as compared to the previous model, 0.72.The positive predictive value is not still low (7%) but the negative predictive value has a slight increase to 98%. 
+
+
+## K-Nearest Neighbours
+
+K-nearest neighbours is is a simple algorithm that and classifies new cases based on a similarity measure by finding the k closest matching points from training data (the nearest neighbours to any patient will be patients with similar characteristics (age, sex or blood results). It also better adapts to the non-linear shape of data pattern. 
+
+
+This is a powerful idea, as the nearest neighbours to any patient will
+be patients with similar profiles (demographics and blood results), so
+may be more likely to have the same outcome.
+
+Using k value as tuning parameter:
+
+
+```{r knn-train, info=FALSE, warning=FALSE}
+knn_model = train(outcome ~ ., data = train, method = "knn", preProcess=c('knnImpute'))
+knn_model
+```
+
+As we can see from the above, the k value of 9 has the higher accuracy as compared to the others since we are using relatively smaller sample. Larger k value result in smoother estimates, while smaller k value lead to more flexible and more wiggly estimates.
+
+```{r knn-predict}
+predictions = predict(knn_model, newdata = test)
+confusionMatrix <- confusionMatrix(predictions, test$outcome, prevalence = 0.06)
+results[nrow(results) + 1, ] <- c(as.character('K-nearest neighbours (knn)'), 
+                                  confusionMatrix$overall['Accuracy'],  
+                                  confusionMatrix$byClass['Sensitivity'], 
+                                  confusionMatrix$byClass['Specificity'])
+rm(knn_model, predictions)
+confusionMatrix
+```
+
+There is not much improvement on sensitivity or specificiy nor positive predictive or negative predictive value. 
+
+## Random Forest
+
+Random forest is the last algorithm that we are using here for machine learning analysis. It applies bagging and feature randomness when building each individual tree to try to create an uncorrelated forest of trees whose prediction by committee is more accurate than that of any individual tree.
+
+```{r rf-train, info=FALSE, warning=FALSE}
+rf_model = train(outcome ~ ., data = train, method = "rf")
+predictions = predict(rf_model, newdata = test)
+confusionMatrix <- confusionMatrix(predictions, test$outcome, prevalence = 0.06)
+results[nrow(results) + 1, ] <- c(as.character('Random Forest (rf)'), 
+                                  confusionMatrix$overall['Accuracy'],  
+                                  confusionMatrix$byClass['Sensitivity'], 
+                                  confusionMatrix$byClass['Specificity'])
+rm(rf_model, predictions)
+confusionMatrix
+```
+
+```{r cleanup-cm}
+rm(confusionMatrix)
+```
+
+Again the result is not more superior than the outcome obtained from prevous models. 
+
+
+## Filter the dataset with liver enzymes higher than 2 times of upper limit of normal range
+ According to Malaysia Liver Guideline, the indication to refer for hepatologist is when the liver enzymes raised  higher than 2 times of upper limit of normal range. Therefore, I'm going to filter the dataset to check whether there is any improvement of the matrices. 
+
+
+## Creating another sets of training and test sets
+
+```{r test_train2}
+
+set.seed(1, sample.kind = "Rounding") 
+fullData2<-fullData%>%filter(alkphos>266&sgpt>112&sgot>70)
+trainIndex2 <- createDataPartition(fullData2$outcome,times=1,p=0.7, list=FALSE)
+train2 <- fullData2[trainIndex2,]
+test2 <- fullData2[-trainIndex2,]
+rm(trainIndex2)
+
+head(fullData2)
+
+nrow(fullData2)
+```
+
+
+## Machine Learning Methods
+
+## Naive Bayes 
+
+```{r nb_train2, info=FALSE, warning=FALSE}
+nb_model2 = train(outcome ~ ., data = train2, method = "nb")
+predictions2 = predict(nb_model2, newdata = test2)
+confusionMatrix2 <- confusionMatrix(predictions2, test2$outcome)
+rm(nb_model2, predictions2)
+confusionMatrix2
+```
+
+Sensitivity reported is 0.77 and specificity is not availbale due to small size of sample obtained. 
+
+## Linear Classifier
+
+```{r linear_classifier_train2, info=FALSE, warning=FALSE}
+lc_model2 = train(outcome ~ ., data = train2, method = "glmboost")
+predictions2 = predict(lc_model2, newdata = test2)
+confusionMatrix2 <- confusionMatrix(predictions2, test2$outcome)
+rm(lc_model2, predictions2)
+confusionMatrix2
+```
+
+Sensitivity reported is 1 and specificity is not availbale due to small size of sample obtained. 
+
+## Logistic regression
+
+```{r lr_train2, info=FALSE, warning=FALSE}
+lr_model2 = train(outcome ~ ., data = train2, method = "bayesglm")
+predictions2 = predict(lr_model2, newdata = test2)
+confusionMatrix2 <- confusionMatrix(predictions2, test2$outcome, prevalence = 0.06)
+rm(lr_model2, predictions2)
+confusionMatrix2
+```
+
+
+## K-Nearest Neighbours
+
+```{r knn-train2, info=FALSE, warning=FALSE}
+knn_model2 = train(outcome ~ ., data = train2, method = "knn", preProcess=c('knnImpute'))
+knn_model2
+```
+
+
+```{r knn-predict2}
+predictions2 = predict(knn_model2, newdata = test2)
+confusionMatrix2 <- confusionMatrix(predictions2, test2$outcome, prevalence = 0.06)
+rm(knn_model2, predictions2)
+confusionMatrix2
+```
+
+
+## Random Forest
+
+```{r rf-train2, info=FALSE, warning=FALSE}
+rf_model2 = train(outcome ~ ., data = train2, method = "rf")
+predictions2 = predict(rf_model2, newdata = test2)
+confusionMatrix2 <- confusionMatrix(predictions2, test2$outcome, prevalence = 0.06)
+rm(rf_model2, predictions2)
+confusionMatrix2
+```
+
+In summary, from the 5 models that we had tested, besides NB model reported sensitivity of 0.77, the rest of the models demonstrated sensitivity of 1. It indicates that if all liver enzymes are at least 2 times higher than the upper limit of normal range, it is almost certain that the patients truely have the liver diseases. However, as the sample size is small, the specificiy is not able to be generated. 
+
+
+## Filter the dataset with liver enzymes raised but less than 2 times of upper limit of normal range
+Now we filter the dataset with any of the liver enzymes raised more than normal but lower than the 2 times of the upper limit of normal range. 
+
+## Creating another sets of training and test sets
+
+```{r test_train3}
+
+set.seed(1, sample.kind = "Rounding") 
+fullData3<-fullData%>%filter(alkphos%in%(133:266)|sgpt%in%(56:112)|sgot%in%(35:70))
+trainIndex3 <- createDataPartition(fullData3$outcome, times=1, p=0.7, list=FALSE)
+train3 <- fullData3[trainIndex3,]
+test3 <- fullData3[-trainIndex3,]
+rm(trainIndex3)
+
+head(fullData3)
+
+nrow(fullData3)
+```
+
+
+## Machine Learning Methods
+
+## Naive Bayes
+
+```{r nb_train3, info=FALSE, warning=FALSE}
+nb_model3 = train(outcome ~ ., data = train3, method = "nb")
+predictions3 = predict(nb_model3, newdata = test3)
+confusionMatrix3 <- confusionMatrix(predictions3, test3$outcome)
+rm(nb_model3, predictions3)
+confusionMatrix3
+```
+
+Sensitivity is 0.52 and specificity is 0.88. 
+
+## Linear Classifier
+
+```{r linc-train-prev3, info=FALSE, warning=FALSE}
+lc_model3 = train(outcome ~ ., data = train3, method = "glmboost")
+predictions3 = predict(lc_model3, newdata = test3)
+confusionMatrix3 <- confusionMatrix(predictions3, test3$outcome)
+rm(lc_model3, predictions3)
+confusionMatrix3
+```
+
+Sensitivity is 0.99 and specificy is 0.02. 
+
+## Logistic regression
+```{r lr-train3, info=FALSE, warning=FALSE}
+lr_model3 = train(outcome ~ ., data = train3, method = "bayesglm")
+predictions3 = predict(lr_model3, newdata = test3)
+confusionMatrix3 <- confusionMatrix(predictions3, test3$outcome, prevalence = 0.06)
+rm(lr_model3, predictions3)
+confusionMatrix3
+```
+
+Sensitivity is 0.92 and specificiy is 0.43. 
+
+## K-Nearest Neighbours
+```{r knn-train3, info=FALSE, warning=FALSE}
+knn_model3 = train(outcome ~ ., data = train3, method = "knn", preProcess=c('knnImpute'))
+knn_model3
+```
+
+
+```{r knn3-predict}
+predictions3 = predict(knn_model3, newdata = test3)
+confusionMatrix3 <- confusionMatrix(predictions3, test3$outcome, prevalence = 0.06)
+rm(knn_model3, predictions3)
+confusionMatrix3
+```
+
+
+Sensitivity is0.76 and specificity is 0.16. 
+
+## Random Forest
+```{r rf-train3, info=FALSE, warning=FALSE}
+rf_model3 = train(outcome ~ ., data = train3, method = "rf")
+predictions3 = predict(rf_model3, newdata = test3)
+confusionMatrix3 <- confusionMatrix(predictions3, test3$outcome, prevalence = 0.06)
+rm(rf_model3, predictions3)
+confusionMatrix3
+```
+
+Sensitivity obtained by Random Forest model is 0.82 and specificity is 0.39. 
+Generally the sensivity decreased compared to the previous dataset above, the sensitivity carry a wider range of 0.52-0.99 and likewise to specificity which account from 0.02-0.88. Overall the senstivity for this range of liver enzymes are lower-ability to pick up true liver diseases had dropped if compared to the liver enzyme range fo more than 2 times of upper limit of normal range. 
+
+
+## Filter the dataset with liver enzymes which are within normal range
+Finally we use the filter if all liver enzymes are within the normal value. 
+
+## Creating another sets of training and test sets
+
+```{r test_train4}
+
+set.seed(1, sample.kind = "Rounding") 
+fullData4<-fullData%>%filter(alkphos%in%(41:133)&sgpt%in%(7:56)&sgot%in%(0:35))
+trainIndex4 <- createDataPartition(fullData4$outcome,times=1,p=0.7, list=FALSE)
+train4 <- fullData4[trainIndex4,]
+test4 <- fullData4[-trainIndex4,]
+rm(trainIndex4)
+
+head(fullData4)
+
+nrow(fullData4)
+```
+
+
+## Naive Bayes
+
+```{r nb-train-prev4, info=FALSE, warning=FALSE}
+nb_model4 = train(outcome ~ ., data = train4, method = "nb")
+predictions4 = predict(nb_model4, newdata = test4)
+confusionMatrix4 <- confusionMatrix(predictions4, test4$outcome)
+rm(nb_model4, predictions4)
+confusionMatrix4
+```
+
+## Linear regression
+```{r linc-train-prev4, info=FALSE, warning=FALSE}
+lc_model4 = train(outcome ~ ., data = train4, method = "glmboost")
+predictions4 = predict(lc_model4, newdata = test4)
+confusionMatrix3 <- confusionMatrix(predictions4, test4$outcome)
+rm(lc_model4, predictions4)
+confusionMatrix4
+```
+
+## Logistic regression
+
+```{r lr-train4, info=FALSE, warning=FALSE}
+lr_model4 = train(outcome ~ ., data = train4, method = "bayesglm")
+predictions4 = predict(lr_model4, newdata = test4)
+confusionMatrix4 <- confusionMatrix(predictions4, test4$outcome, prevalence = 0.06)
+rm(lr_model4, predictions4)
+confusionMatrix4
+```
+
+## K-Nearest Neighbours
+
+```{r knn-train4, info=FALSE, warning=FALSE}
+knn_model4 = train(outcome ~ ., data = train4, method = "knn", preProcess=c('knnImpute'))
+knn_model4
+```
+
+
+```{r knn-predict4}
+predictions4 = predict(knn_model4, newdata = test4)
+confusionMatrix4 <- confusionMatrix(predictions4, test4$outcome)
+rm(knn_model4, predictions4)
+confusionMatrix4
+```
+
+## Random Forest
+```{r rf-train4, info=FALSE, warning=FALSE}
+rf_model4 = train(outcome ~ ., data = train4, method = "rf")
+predictions4 = predict(rf_model4, newdata = test4)
+confusionMatrix4 <- confusionMatrix(predictions4, test4$outcome, prevalence = 0.06)
+rm(rf_model4, predictions4)
+confusionMatrix4
+```
+
+Over the 5 models that we had run, Logistic regression and Random Forest had generated sensitivity of 0.5 and the rest with sensitivity of 0. The result is not so reliable as the sample size is very small (all 3 liver enzymes are normal). It also gives an impression that abnormality in any one of the liver enzymes are not uncommon even in healthy population. 
+
+
+# Results
+
+Comparison of the results for accuracy,sensitivity and specificity of the dataset before applying filter:
+
+```{r print_results_accuracy}
+results %>% arrange(Accuracy)
+```
+
+Linear classifier accounts for the highest sensitivity of 100% among all models but the speficity of 20% is quite low. High sensitivity indicates that among all patients flagged with abnormal liver function tests only small portion of them truly need futher work out and treatment from hepatologists. Other similar models with high sensitivity and relatively low specificity are knn model,logistic regression and random forest.
+
+On the other hand, Naive Bayes model yields relatively higher specificity (67%) than sensitivity(67%). Higher specificity indicates that there are fewer false positive results. 
+
+After using the filter:
+a) All 3 liver enzymes raised more than 2 times of the upper limit of normal range: The overall sensitivy increased, however due to small sample size,there is error/NA result for specificity. 
+
+b) Any one of the liver enzymes raised but not more than 2 times of the upper limit of normal range: The overall sensitivity became lower, and specificy ranged from 0.02-0.88(wide range).
+
+c) All liver enzymes within normal range: The sample size is limited thus the sensitivity and specificity became not reliable. 
+
+
+## Conclusion
+
+After the data analysis, it can be concluded that no model has a perfect combination which makes it distinctly superior to the others.
+
+If we are using the full dataset without filter, most of the models demonstrated high sensitivy and lower specificity. Flagged liver function tests can easily detect patients at risk but only few patients at risk are truly suffer from liver diseases. As a result, this can cause unccessary referral to hepatologists. If liver function test is in normal range, it indicates that the patient is likely to be free from liver disease since the negative predictive value is generally high from all models. 
+
+The Naive Bayes ("nb" method) approach seems to provide the highest specificity but lower sensitivity can lead to  underdetection of patients at risk of liver diseases. 
+
+On the other hand,if we rely on liver enzymes for the diganosis, it is likely that we can improve the existing results by absorbing larger sample size in dataset:
+
+When liver enzymes are raised but less than 2 times of upper limit of normal range:
+-There can be rise in single blood parameters eg: only raise in alkaline phosphatase or aspartate aminotransferase – this can be due to causes other than liver since these 2 enzyems are found in other organs.Eg:single rise in alkaline phosphatase can be due to bone pathology. 
+-If liver enzymes are raised but less than 2 times of upper limit of normal range, it is worthwhile to repeat another test and not to refer the patient to liver specialist first since the sensitivity is generally lower and the specificity can be as low as 0.02. 
+
+If all liver enzymes are raised at least 2 times higher than the upper limit of normal range, it is indication to refer to hepatologists for further work out as it demonstrated that this pattern of result is very sensitive to pick up liver disease and specificity could be further determined by using larger size of dataset.
+
+## Discussion
+
+Liver function test is sensitive but not specific. The positive predictive value is low as many patients who had abnormal liver function test are likely to be healthy and do not require any liver care ultimately. On the other hand, the negative predictive value is high which signifies that if the test is negative, it is very likely that the patient is free from liver diseases. 
+
+According to Malaysia Liver Guideline, clinicians should refer patients if the liver enzymes are at least 2-3 times higher than the upper limit of the normal range. The results from this project had shown that the current liver guideline in Malaysia is appropriate and in tandem with the results of the project. 
+
+As clinician, when we encounter the case whereby the liver enzymes are raised but not more than 2 times higher than the normal range,it is important to take a thorough history and physical examination to rule out any other possible causes which may induce the liver enzymes alteration such as alcohol intake and consumption of liver toxic drugs. 
+
+The limitation of the project included small sample size (579 patients). Besides, the dataset is from unmatched case-control study so the proportion of the patient receiving care are not in equal proportion with control group (414 vs 165) and case and control groups are not matched with same characterstic. Following this project, I plan to gather the dataset in Malaysia context with larger sample size  and run the same project to prove that the methodology and result of this project is not population-specific and can be generalized to global population. 
+
+
+My "Liver_function_test Github repository" is 
+**[in this link](https://github.com/zenasimlab/Capsone_Liver_function_test)**
+
+## References
+1. Yee HF, Lidofsky SD. Acute liver failure. In: Feldman M, Friedman LS, Sleisenger MH, eds. Sleisenger and Fordtran’s Gastrointestinal and Liver Disease: Pathophysiology, Diagnosis, Management. 7th ed. Philadelphia, Pa.: Saunders, 2002:1567–74
+
+2. http://archive.ics.uci.edu/ml
+
+
+
